@@ -26,6 +26,7 @@ import qualified Data.Store           as S
 import qualified Data.Text            as T
 import qualified Data.Text.Encoding   as T
 import           Data.Typeable
+import qualified Data.Winery          as W
 import           Dataset
 import           GHC.Generics
 import qualified GHC.Packing          as P
@@ -57,6 +58,8 @@ instance {-# OVERLAPPABLE #-} R.Persist a => R.Persist (BinTree a)
 
 instance {-# OVERLAPPABLE #-} CBOR.Serialise a =>
                               CBOR.Serialise (BinTree a)
+
+instance W.Serialise a => W.Serialise (BinTree a)
 
 -- -- Specialised instances, might increase performance
 -- instance {-# OVERLAPPING #-} F.Flat [Direction]
@@ -108,6 +111,8 @@ data Direction
            , R.Persist
            , F.Flat
            )
+instance W.Serialise Direction where
+  bundleSerialise = bundleVariant id
 
 instance Arbitrary Direction where
   arbitrary = elements [North, South, Center, East, West]
@@ -175,6 +180,8 @@ data PkgStore =
 data PkgShow =
     PkgShow
 
+data PkgWinery = PkgWinery
+
 class Serialize lib a where
   serialize :: lib -> a -> IO BS.ByteString
   deserialize :: lib -> BS.ByteString -> IO a
@@ -229,6 +236,12 @@ instance (Show a, Read a, NFData a) => Serialize PkgShow a where
     {-# NOINLINE deserialize #-}
     deserialize _ = return . force . read . T.unpack . T.decodeUtf8
 
+instance (S.Serialise a, NFData a) => Serialize PkgWinery a where
+  {-# NOINLINE serialize #-}
+  serialize _ = return . force . F.serialise
+  {-# NOINLINE deserialize #-}
+  deserialize _ = return . force . fromRight . F.deserialises
+
 pkgs ::
      ( NFData a
      , C.Serialize a
@@ -238,6 +251,7 @@ pkgs ::
      , S.Store a
      , F.Flat a
      , B.Binary a
+     , W.Serialise a
      , Show a
      , Read a
      )
@@ -254,6 +268,7 @@ pkgs =
   , ("persist", serialize PkgPersist, deserialize PkgPersist)
   , ("packman", serialize PkgPackman, deserialize PkgPackman)
   , ("serialise", serialize PkgCBOR, deserialize PkgCBOR)
+  , ("winery", serialize PkgWinery, deserialize PkgWinery)
   -- , ("show", serialize PkgShow, deserialize PkgShow)
   ]
 
